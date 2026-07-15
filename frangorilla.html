@@ -91,6 +91,66 @@ var SFX = {
   cocorico: function(){ [660,880,660,990].forEach(function(f,i){ setTimeout(function(){ beep(f, 0.15, 'square', 0.06); }, i*90); }); }
 };
 
+// ---------- Música de fundo (sequenciador chiptune via WebAudio) ----------
+var musicOn = true;
+var musicStep = 0, musicNext = 0;
+var MUSIC_STEP_T = 0.115; // duração de cada semicolcheia (~130 BPM)
+var noiseBuf = null;
+var _ = null;
+// progressão C - Am - F - G, melodia alegre com suingue de choro/samba
+var chordBass = [[48, 55], [45, 52], [41, 48], [43, 50]]; // tônica e quinta por compasso
+var leadBars = [
+  [76,_,79,_,84,_,79,_,81,79,76,_,72,_,_,_],
+  [74,_,76,_,72,_,69,_,72,_,76,_,81,_,_,_],
+  [81,_,84,_,81,_,77,_,79,_,77,_,74,_,72,_],
+  [74,_,71,_,67,_,71,_,74,_,79,_,74,_,71,_]
+];
+function noteFreq(n) { return 440 * Math.pow(2, (n - 69) / 12); }
+function getNoise() {
+  if (!noiseBuf) {
+    noiseBuf = actx.createBuffer(1, Math.floor(actx.sampleRate * 0.2), actx.sampleRate);
+    var d = noiseBuf.getChannelData(0);
+    for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return noiseBuf;
+}
+function playTone(freq, t, dur, type, vol) {
+  var o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g); g.connect(actx.destination);
+  o.start(t); o.stop(t + dur);
+}
+function playHat(t, vol, dur) {
+  var s = actx.createBufferSource(); s.buffer = getNoise();
+  var f = actx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 6500;
+  var g = actx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  s.connect(f); f.connect(g); g.connect(actx.destination);
+  s.start(t); s.stop(t + dur);
+}
+function tickMusic() {
+  if (!actx || !musicOn) return;
+  if (state !== 'play' && state !== 'title') { musicNext = 0; return; }
+  var now = actx.currentTime;
+  if (musicNext < now) musicNext = now + 0.06;
+  while (musicNext < now + 0.25) {
+    var s = musicStep % 64;
+    var bar = (s / 16) | 0, st = s % 16;
+    var L = leadBars[bar][st];
+    if (L != null) playTone(noteFreq(L), musicNext, 0.19, 'square', 0.045);
+    if (st === 0 || st === 8)  playTone(noteFreq(chordBass[bar][0]), musicNext, 0.22, 'triangle', 0.11);
+    if (st === 4 || st === 12) playTone(noteFreq(chordBass[bar][1]), musicNext, 0.22, 'triangle', 0.09);
+    if (st % 2 === 0) playHat(musicNext, st % 8 === 0 ? 0.045 : 0.022, 0.04); // chimbal
+    if (st === 4 || st === 12) playHat(musicNext, 0.055, 0.1);                // caixa
+    if (st === 7 || st === 15) playHat(musicNext, 0.03, 0.05);               // suingue
+    musicStep++;
+    musicNext += MUSIC_STEP_T;
+  }
+}
+
 // ---------- Nível (construído por código) ----------
 // Tiles: 0 vazio | 1 terra | 2 grama | 3 tijolo | 4 bloco-? | 5 bloco usado
 //        6 cano corpo | 7 cano borda | 9 moeda
@@ -229,6 +289,7 @@ window.addEventListener('keydown', function(e){
   keys[e.code] = true;
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].indexOf(e.code) >= 0) e.preventDefault();
   initAudio();
+  if (e.code === 'KeyM' && !e.repeat) musicOn = !musicOn;
   if (state !== 'play' && (e.code === 'Enter' || e.code === 'Space')) startFromMenu();
 });
 window.addEventListener('keyup', function(e){ keys[e.code] = false; });
@@ -237,6 +298,7 @@ window.addEventListener('keyup', function(e){ keys[e.code] = false; });
 var btnL = { x: 78,  y: GH-78, r: 46 };
 var btnR = { x: 192, y: GH-78, r: 46 };
 var btnJ = { x: GW-88, y: GH-82, r: 56 };
+var musicBtn = { x: GW-185, y: 30, r: 18 };
 var touchState = { left:false, right:false, jump:false };
 var activePointers = {};
 
@@ -264,8 +326,10 @@ canvas.addEventListener('pointerdown', function(e){
   e.preventDefault();
   initAudio();
   if (e.pointerType === 'touch') isTouchDevice = true;
+  var pos = canvasPos(e);
+  if (hitBtn(pos, musicBtn)) { musicOn = !musicOn; return; }
   if (state !== 'play') { startFromMenu(); return; }
-  activePointers[e.pointerId] = canvasPos(e);
+  activePointers[e.pointerId] = pos;
   updateTouchFromPointers();
 });
 canvas.addEventListener('pointermove', function(e){
@@ -457,6 +521,11 @@ function update() {
   player.vy = Math.min(player.vy + GRAV, MAXFALL);
   moveAndCollide(player, hitBlock);
   if (player.x < 0) player.x = 0;
+
+  // poeira ao correr
+  if (player.onGround && ax !== 0 && frameCount % 8 === 0) {
+    particles.push({ type:'dust', x: player.x + player.w/2 - player.facing*10, y: player.y + player.h - 2, vy: -0.6, t: 0 });
+  }
 
   collectCoinsAround();
 
@@ -653,8 +722,21 @@ function drawCastleBg(px) {
   ctx.restore();
 }
 
+function drawSun() {
+  var sx = 830, sy = 78;
+  var sg = ctx.createRadialGradient(sx, sy, 8, sx, sy, 120);
+  sg.addColorStop(0, 'rgba(255,250,215,0.95)');
+  sg.addColorStop(0.25, 'rgba(255,240,180,0.5)');
+  sg.addColorStop(1, 'rgba(255,240,180,0)');
+  ctx.fillStyle = sg;
+  ctx.fillRect(sx - 130, sy - 130, 260, 260);
+  ctx.fillStyle = '#fff7d6';
+  ctx.beginPath(); ctx.arc(sx, sy, 26, 0, 7); ctx.fill();
+}
+
 function drawBackground() {
   drawSky();
+  drawSun();
   var p1 = camX * 0.15, p2 = camX * 0.3, p3 = camX * 0.5;
   // nuvens
   for (var i = 0; i < 8; i++) {
@@ -665,6 +747,12 @@ function drawBackground() {
   drawCorcovado((p2 % 1600) - 1600);
   drawCastleBg((p2 % 1600));
   drawCastleBg((p2 % 1600) - 1600);
+  // névoa atmosférica na linha do horizonte (profundidade)
+  var hz = ctx.createLinearGradient(0, 300, 0, 470);
+  hz.addColorStop(0, 'rgba(205,228,245,0)');
+  hz.addColorStop(1, 'rgba(205,228,245,0.5)');
+  ctx.fillStyle = hz;
+  ctx.fillRect(0, 300, GW, 170);
   // morros de floresta (camada mais próxima)
   for (var j = 0; j < 12; j++) {
     var bx = ((j * 260 - p3) % (GW + 520));
@@ -672,6 +760,29 @@ function drawBackground() {
     bx -= 130;
     drawJungleBlob(bx, 470, 90 + (j % 3) * 30, j % 3);
   }
+  // névoa leve também sobre os morros próximos
+  var hz2 = ctx.createLinearGradient(0, 360, 0, 480);
+  hz2.addColorStop(0, 'rgba(210,232,246,0)');
+  hz2.addColorStop(1, 'rgba(210,232,246,0.22)');
+  ctx.fillStyle = hz2;
+  ctx.fillRect(0, 360, GW, 120);
+}
+
+function groundYBelow(wx, wy) {
+  var c = Math.floor(wx / TS);
+  for (var r = Math.max(0, Math.floor(wy / TS)); r < ROWS; r++) {
+    if (isSolid(tileAt(c, r))) return r * TS;
+  }
+  return -1;
+}
+function drawShadow(wx, footY, w) {
+  var gy = groundYBelow(wx, footY - 4);
+  if (gy < 0) return;
+  var d = Math.min(1, Math.max(0.1, 1 - (gy - footY) / 170));
+  ctx.fillStyle = 'rgba(15,30,10,' + (0.26 * d).toFixed(3) + ')';
+  ctx.beginPath();
+  ctx.ellipse(wx - camX, gy + 4, w * (0.45 + 0.35 * d), 1.5 + 4 * d, 0, 0, 7);
+  ctx.fill();
 }
 
 function drawWater() {
@@ -691,6 +802,11 @@ function drawWater() {
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     var w = Math.sin(frameCount * 0.08 + c) * 3;
     ctx.fillRect(x, surf - 2 + w * 0.4, TS + 1, 3);
+    // reflexos e cintilação
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(x + 4, surf + 16 + Math.sin(frameCount * 0.05 + c * 1.3) * 5, TS - 8, 2);
+    ctx.fillStyle = 'rgba(180,225,255,0.14)';
+    ctx.fillRect(x + 8, surf + 38 + Math.cos(frameCount * 0.04 + c * 0.9) * 7, TS - 14, 2);
   });
   ctx.restore();
 }
@@ -711,10 +827,14 @@ function drawTile(c, r) {
     ctx.fillRect(x, y, TS, TS);
     ctx.fillStyle = '#77491f';
     ctx.beginPath(); ctx.arc(x + 20, y + 24, 5, 0, 7); ctx.fill();
-    ctx.fillStyle = '#3fae4e';
-    ctx.fillRect(x, y, TS, 12);
-    ctx.fillStyle = '#57cd63';
-    ctx.fillRect(x, y, TS, 6);
+    var gg = ctx.createLinearGradient(0, y, 0, y + 13);
+    gg.addColorStop(0, '#74e07c');
+    gg.addColorStop(0.5, '#4cc257');
+    gg.addColorStop(1, '#319644');
+    ctx.fillStyle = gg;
+    ctx.fillRect(x, y, TS, 13);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fillRect(x, y, TS, 2);
     // franjas de musgo
     ctx.fillStyle = '#3fae4e';
     ctx.beginPath();
@@ -840,6 +960,8 @@ function drawFrangorilla(px, py, facing, walkT, onGround, inv, dead) {
   if (dead) { ctx.rotate(Math.PI); }
   if (facing < 0) ctx.scale(-1, 1);
   ctx.translate(-16, -23);
+  // respiração sutil quando parado
+  if (onGround && walkT === 0 && !dead) ctx.translate(0, Math.sin(frameCount * 0.08) * 0.7);
   // agora desenhando em caixa local 32x46
   var legSwing = onGround ? Math.sin(walkT * 2) * 6 : 4;
   var W = 32;
@@ -890,9 +1012,15 @@ function drawFrangorilla(px, py, facing, walkT, onGround, inv, dead) {
   ctx.fillStyle = '#2e2214';
   ctx.beginPath(); ctx.arc(4 - armSwing * 0.5, 27 - (onGround ? 0 : 9), 4.5, 0, 7); ctx.fill();
 
-  // --- torso: camisa amarela da seleção ---
-  ctx.fillStyle = '#f7d417';
+  // --- torso: camisa amarela da seleção (com volume) ---
+  var jg = ctx.createLinearGradient(0, 12, 0, 29);
+  jg.addColorStop(0, '#ffe23a');
+  jg.addColorStop(0.6, '#f7d417');
+  jg.addColorStop(1, '#dfae06');
+  ctx.fillStyle = jg;
   rr(5, 12, 22, 17, 6); ctx.fill();
+  ctx.strokeStyle = 'rgba(90,60,0,0.35)'; ctx.lineWidth = 1.4;
+  rr(5, 12, 22, 17, 6); ctx.stroke();
   // sombra da camisa
   ctx.fillStyle = 'rgba(0,0,0,0.08)';
   rr(5, 22, 22, 7, 4); ctx.fill();
@@ -911,9 +1039,15 @@ function drawFrangorilla(px, py, facing, walkT, onGround, inv, dead) {
   ctx.fillStyle = '#332617';
   ctx.beginPath(); ctx.arc(28 + armSwing * 0.5, 26 - (onGround ? 0 : 11), 4.5, 0, 7); ctx.fill();
 
-  // --- cabeça de galo (creme com penas) ---
-  ctx.fillStyle = '#e8dcc0';
+  // --- cabeça de galo (creme com penas e volume) ---
+  var hg = ctx.createRadialGradient(15, 3, 2, 17, 6, 10);
+  hg.addColorStop(0, '#f6efdc');
+  hg.addColorStop(0.7, '#e8dcc0');
+  hg.addColorStop(1, '#cbb894');
+  ctx.fillStyle = hg;
   ctx.beginPath(); ctx.ellipse(17, 6, 8.5, 8, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = 'rgba(110,90,50,0.35)'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.ellipse(17, 6, 8.5, 8, 0, 0, 7); ctx.stroke();
   ctx.fillStyle = '#d9c8a4';
   ctx.beginPath(); ctx.ellipse(13, 8, 5, 5.5, 0, 0, 7); ctx.fill();
   // crista vermelha
@@ -1203,6 +1337,30 @@ function drawHUD() {
 
   drawBrazilFlag(40, GH - 28, 1);
   textOutline('MUNDO 1-1', 66, GH - 28, 20, '#fff');
+  drawMusicBtn();
+}
+
+function drawMusicBtn() {
+  var b = musicBtn;
+  ctx.save();
+  ctx.fillStyle = 'rgba(15,35,65,0.45)';
+  ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill();
+  // alto-falante
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.moveTo(b.x - 9, b.y - 3); ctx.lineTo(b.x - 4, b.y - 3);
+  ctx.lineTo(b.x + 1, b.y - 8); ctx.lineTo(b.x + 1, b.y + 8);
+  ctx.lineTo(b.x - 4, b.y + 3); ctx.lineTo(b.x - 9, b.y + 3);
+  ctx.closePath(); ctx.fill();
+  if (musicOn) {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(b.x + 3, b.y, 6, -0.9, 0.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(b.x + 3, b.y, 10, -0.9, 0.9); ctx.stroke();
+  } else {
+    ctx.strokeStyle = '#ff6a5e'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(b.x + 4, b.y - 6); ctx.lineTo(b.x + 12, b.y + 6); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawTouchControls() {
@@ -1280,7 +1438,8 @@ function drawTitle() {
   ctx.restore();
   var blink = Math.floor(frameCount / 35) % 2 === 0;
   if (blink) textOutline(isTouchDevice ? 'TOQUE PARA COMEÇAR' : 'PRESSIONE ENTER OU TOQUE PARA COMEÇAR', GW/2, 470, 26, '#fff', 'center');
-  textOutline('Setas / A-D: andar    Espaço / W: pular', GW/2, 512, 16, '#dfe9f5', 'center');
+  textOutline('Setas / A-D: andar    Espaço / W: pular    M: música', GW/2, 512, 16, '#dfe9f5', 'center');
+  drawMusicBtn();
 }
 
 function drawEndScreen(title, subtitle, color) {
@@ -1317,11 +1476,22 @@ function draw() {
 
   drawFlagAndCastle();
   plants.forEach(drawPlant);
+  // sombras no chão (profundidade)
+  enemies.forEach(function(en){
+    if (en.alive) drawShadow(en.x + en.w/2, en.y + en.h, en.w);
+  });
+  if (!player.dead) drawShadow(player.x + player.w/2, player.y + player.h, player.w + 6);
   enemies.forEach(function(en){
     if (en.type === 'goomba') drawGoomba(en); else drawKoopa(en);
   });
   drawFrangorilla(player.x - camX, player.y, player.facing, player.walkT, player.onGround, player.inv, player.dead);
   drawParticles();
+  // vinheta sutil de profundidade
+  var vg = ctx.createRadialGradient(GW/2, GH/2, GH*0.55, GW/2, GH/2, GH*1.0);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(8,20,42,0.20)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, GW, GH);
   drawHUD();
   drawTouchControls();
 
@@ -1341,6 +1511,7 @@ function loop(ts) {
     update();
     acc -= STEP;
   }
+  tickMusic();
   draw();
 }
 requestAnimationFrame(loop);
