@@ -80,12 +80,30 @@ function beep(freq, dur, type, vol, slideTo) {
     o.start(); o.stop(actx.currentTime + dur);
   } catch(e) {}
 }
+// rajada de ruído filtrado (passos, baque, "squish")
+function noiseBurst(dur, freq, type, vol, slideTo) {
+  if (!actx) return;
+  try {
+    var s = actx.createBufferSource(); s.buffer = getNoise();
+    var f = actx.createBiquadFilter(); f.type = type || 'lowpass';
+    f.frequency.setValueAtTime(freq, actx.currentTime);
+    if (slideTo) f.frequency.exponentialRampToValueAtTime(slideTo, actx.currentTime + dur);
+    var g = actx.createGain();
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    s.connect(f); f.connect(g); g.connect(actx.destination);
+    s.start(); s.stop(actx.currentTime + dur);
+  } catch(e) {}
+}
+var stepFlip = 0;
 var SFX = {
-  jump:  function(){ beep(320, 0.22, 'square', 0.07, 640); },
-  coin:  function(){ beep(988, 0.08, 'square', 0.07); setTimeout(function(){ beep(1319, 0.25, 'square', 0.07); }, 70); },
-  stomp: function(){ beep(280, 0.15, 'triangle', 0.1, 90); },
-  hurt:  function(){ beep(220, 0.4, 'sawtooth', 0.08, 60); },
-  bump:  function(){ beep(140, 0.1, 'square', 0.07); },
+  jump:  function(){ beep(300, 0.16, 'square', 0.06, 620); beep(450, 0.18, 'triangle', 0.04, 900); noiseBurst(0.06, 1800, 'highpass', 0.03); },
+  step:  function(){ stepFlip ^= 1; noiseBurst(0.045, stepFlip ? 900 : 700, 'lowpass', 0.035); beep(stepFlip ? 150 : 120, 0.04, 'triangle', 0.03); },
+  land:  function(str){ var v = Math.min(0.12, 0.05 + str * 0.02); noiseBurst(0.11, 500, 'lowpass', v, 120); beep(110, 0.1, 'triangle', v * 0.7, 70); },
+  coin:  function(){ beep(988, 0.07, 'square', 0.06); setTimeout(function(){ beep(1319, 0.22, 'square', 0.06, 1560); }, 65); },
+  stomp: function(){ noiseBurst(0.14, 2200, 'lowpass', 0.09, 260); beep(400, 0.12, 'square', 0.07, 90); setTimeout(function(){ beep(760, 0.14, 'square', 0.05, 1200); }, 40); },
+  hurt:  function(){ beep(400, 0.12, 'square', 0.08, 200); setTimeout(function(){ beep(220, 0.4, 'sawtooth', 0.08, 60); }, 100); },
+  bump:  function(){ beep(140, 0.1, 'square', 0.07); noiseBurst(0.05, 400, 'lowpass', 0.04); },
   win:   function(){ [523,659,784,1047,1319].forEach(function(f,i){ setTimeout(function(){ beep(f, 0.28, 'square', 0.07); }, i*130); }); },
   die:   function(){ [494,440,392,330,262].forEach(function(f,i){ setTimeout(function(){ beep(f, 0.2, 'triangle', 0.09); }, i*110); }); },
   cocorico: function(){ [660,880,660,990].forEach(function(f,i){ setTimeout(function(){ beep(f, 0.15, 'square', 0.06); }, i*90); }); }
@@ -252,6 +270,8 @@ var flagReached = false;
 var winTimer = 0, deadTimer = 0;
 var isTouchDevice = false;
 var frameCount = 0;
+var shakeT = 0, shakeMag = 0;      // tremor de tela
+function addShake(mag, dur) { shakeMag = Math.max(shakeMag, mag); shakeT = Math.max(shakeT, dur); }
 
 function newGame() {
   score = 0; coins = 0; lives = 5; stars = 1;
@@ -269,8 +289,11 @@ function respawn() {
     x: 2*TS, y: 11*TS, w: 26, h: 44,
     vx: 0, vy: 0,
     facing: 1, onGround: false,
-    inv: 0, dead: false, walkT: 0
+    inv: 0, dead: false, walkT: 0,
+    sx: 1, sy: 1,        // escala atual (squash & stretch)
+    wasAir: false, stepT: 0, blink: 0
   };
+  shakeT = 0; shakeMag = 0;
   camX = 0;
   enemies = enemySpawns.map(function(s){
     return { x: s.x, y: s.y, w: s.type==='koopa' ? 28 : 28, h: s.type==='koopa' ? 34 : 28,
@@ -507,7 +530,9 @@ function update() {
   if (jumpBuf > 0 && coyote > 0) {
     player.vy = JUMPV;
     jumpBuf = 0; coyote = 0;
+    player.sx = 0.7; player.sy = 1.35;   // estica ao decolar
     SFX.jump();
+    for (var d = 0; d < 4; d++) particles.push({ type:'dust', x: player.x + player.w/2 + (Math.random()-0.5)*16, y: player.y + player.h - 2, vy: -0.5 - Math.random(), t: 0 });
   }
   if (jumpBuf > 0) jumpBuf--;
   if (jp) {
@@ -518,14 +543,45 @@ function update() {
     if (player.vy < -5) player.vy = -5; // soltar = pulo curto
   }
 
+  var fallV = player.vy;
   player.vy = Math.min(player.vy + GRAV, MAXFALL);
   moveAndCollide(player, hitBlock);
   if (player.x < 0) player.x = 0;
 
-  // poeira ao correr
-  if (player.onGround && ax !== 0 && frameCount % 8 === 0) {
-    particles.push({ type:'dust', x: player.x + player.w/2 - player.facing*10, y: player.y + player.h - 2, vy: -0.6, t: 0 });
+  // aterrissagem: achata, levanta poeira, baque sonoro e tremor
+  if (player.onGround && player.wasAir) {
+    var impact = Math.min(1, fallV / 13);
+    if (impact > 0.15) {
+      player.sx = 1 + 0.45 * impact; player.sy = 1 - 0.4 * impact;   // achata
+      SFX.land(fallV);
+      if (impact > 0.4) addShake(2.5 * impact, 8);
+      var n = 3 + Math.round(impact * 5);
+      for (var l = 0; l < n; l++) {
+        particles.push({ type:'dust', x: player.x + player.w/2 + (Math.random()-0.5)*22,
+                         y: player.y + player.h - 2, vy: -0.5 - Math.random()*1.2, t: 0 });
+      }
+    }
   }
+  player.wasAir = !player.onGround;
+
+  // molinha do squash/stretch de volta ao normal
+  player.sx += (1 - player.sx) * 0.2;
+  player.sy += (1 - player.sy) * 0.2;
+  // no ar, leve alongamento conforme a velocidade vertical
+  if (!player.onGround) {
+    var st = Math.max(-0.18, Math.min(0.18, -player.vy * 0.012));
+    player.sy += (1 + st - player.sy) * 0.15;
+    player.sx += (1 - st - player.sx) * 0.15;
+  }
+
+  // passos + poeira ao correr
+  if (player.onGround && ax !== 0) {
+    player.stepT += Math.abs(player.vx);
+    if (player.stepT >= 22) { player.stepT = 0; SFX.step(); }
+    if (frameCount % 8 === 0) {
+      particles.push({ type:'dust', x: player.x + player.w/2 - player.facing*10, y: player.y + player.h - 2, vy: -0.6, t: 0 });
+    }
+  } else { player.stepT = 12; }
 
   collectCoinsAround();
 
@@ -561,10 +617,19 @@ function update() {
       var stomping = player.vy > 0 && (player.y + player.h) < (en.y + en.h * 0.6);
       if (stomping) {
         en.alive = false; en.squash = 0;
-        player.vy = -8.5;
+        player.vy = jumpHeld ? -11 : -8.5;   // pulo mais alto se segurar (bounce)
+        player.sx = 1.35; player.sy = 0.7;
         score += 200;
         SFX.stomp();
-        popups.push({ x: en.x + en.w/2, y: en.y, txt: '+200', t: 0 });
+        addShake(3.5, 10);
+        popups.push({ x: en.x + en.w/2, y: en.y - 6, txt: '+200', t: 0 });
+        // explosão de estrelinhas e poeira ao amassar
+        var ex = en.x + en.w/2, ey = en.y + en.h/2;
+        for (var k = 0; k < 8; k++) {
+          var ang = (k / 8) * Math.PI * 2;
+          particles.push({ type:'star', x: ex, y: ey, vx: Math.cos(ang)*(1.6+Math.random()), vy: Math.sin(ang)*(1.6+Math.random()) - 1, t: 0, rot: Math.random()*6 });
+        }
+        for (var kd = 0; kd < 5; kd++) particles.push({ type:'dust', x: ex + (Math.random()-0.5)*20, y: en.y + en.h - 2, vy: -0.6 - Math.random(), t: 0 });
       } else {
         hurtPlayer();
       }
@@ -585,10 +650,20 @@ function update() {
   });
 
   // --- partículas e popups ---
-  particles.forEach(function(p){ p.t++; p.y += p.vy; p.vy += 0.3; });
-  particles = particles.filter(function(p){ return p.t < 40; });
+  particles.forEach(function(p){
+    p.t++;
+    if (p.vx) p.x += p.vx;
+    p.y += p.vy;
+    p.vy += (p.type === 'star') ? 0.18 : 0.3;
+    if (p.rot != null) p.rot += 0.2;
+  });
+  particles = particles.filter(function(p){ return p.t < (p.type === 'star' ? 46 : 40); });
   popups.forEach(function(p){ p.t++; p.y -= 0.8; });
   popups = popups.filter(function(p){ return p.t < 50; });
+
+  // --- tremor de tela ---
+  if (shakeT > 0) { shakeT--; shakeMag *= 0.85; }
+  else shakeMag = 0;
 
   // --- câmera ---
   var target = player.x - GW * 0.38;
@@ -953,10 +1028,13 @@ function drawFlagAndCastle() {
 }
 
 // ---------- Personagem: FRANGORILLA ----------
-function drawFrangorilla(px, py, facing, walkT, onGround, inv, dead) {
+function drawFrangorilla(px, py, facing, walkT, onGround, inv, dead, sx, sy) {
   if (inv > 0 && Math.floor(inv / 6) % 2 === 0 && !dead) return; // pisca
+  sx = sx || 1; sy = sy || 1;
   ctx.save();
-  ctx.translate(px + 13, py + 22);
+  ctx.translate(px + 13, py + 44);   // pivô nos pés
+  if (!dead) ctx.scale(sx, sy);      // squash & stretch a partir do chão
+  ctx.translate(0, -22);
   if (dead) { ctx.rotate(Math.PI); }
   if (facing < 0) ctx.scale(-1, 1);
   ctx.translate(-16, -23);
@@ -1226,10 +1304,29 @@ function drawParticles() {
       ctx.beginPath(); ctx.ellipse(0, 0, 8 * (0.3 + 0.7 * wob), 10, 0, 0, 7); ctx.fill();
       ctx.restore();
     } else if (p.type === 'dust') {
-      ctx.fillStyle = 'rgba(180,140,90,' + Math.max(0, 1 - p.t / 30) + ')';
-      ctx.beginPath(); ctx.arc(x, p.y, 4, 0, 7); ctx.fill();
+      var a = Math.max(0, 1 - p.t / 30);
+      ctx.fillStyle = 'rgba(214,196,168,' + (a * 0.85) + ')';
+      ctx.beginPath(); ctx.arc(x, p.y, 3 + p.t * 0.12, 0, 7); ctx.fill();
+    } else if (p.type === 'star') {
+      var sa = Math.max(0, 1 - p.t / 46);
+      ctx.save();
+      ctx.translate(x, p.y);
+      ctx.rotate(p.rot || 0);
+      ctx.globalAlpha = sa;
+      ctx.fillStyle = '#fff2a0';
+      ctx.strokeStyle = '#f6c700'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (var i = 0; i < 10; i++) {
+        var ang = -Math.PI/2 + i * Math.PI/5;
+        var rad = i % 2 === 0 ? 6 : 2.6;
+        var mx = Math.cos(ang) * rad, my = Math.sin(ang) * rad;
+        if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
     }
   });
+  ctx.globalAlpha = 1;
   ctx.font = 'bold 14px Arial';
   ctx.textAlign = 'center';
   popups.forEach(function(p){
@@ -1457,6 +1554,11 @@ function draw() {
 
   if (state === 'title') { drawTitle(); return; }
 
+  ctx.save();
+  if (shakeMag > 0.1) {
+    ctx.translate((Math.random()-0.5) * shakeMag * 2, (Math.random()-0.5) * shakeMag * 2);
+  }
+
   drawBackground();
   drawWater();
 
@@ -1484,7 +1586,7 @@ function draw() {
   enemies.forEach(function(en){
     if (en.type === 'goomba') drawGoomba(en); else drawKoopa(en);
   });
-  drawFrangorilla(player.x - camX, player.y, player.facing, player.walkT, player.onGround, player.inv, player.dead);
+  drawFrangorilla(player.x - camX, player.y, player.facing, player.walkT, player.onGround, player.inv, player.dead, player.sx, player.sy);
   drawParticles();
   // vinheta sutil de profundidade
   var vg = ctx.createRadialGradient(GW/2, GH/2, GH*0.55, GW/2, GH/2, GH*1.0);
@@ -1492,6 +1594,7 @@ function draw() {
   vg.addColorStop(1, 'rgba(8,20,42,0.20)');
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, GW, GH);
+  ctx.restore();   // fim do tremor (HUD não treme)
   drawHUD();
   drawTouchControls();
 
