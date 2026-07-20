@@ -63,9 +63,8 @@
     if (a.verificado) badges.push('<span class="badge badge-verificado">✓ Verificado</span>');
 
     el.innerHTML = `
-      <div class="card-img" style="background:${a.cor}">
+      <div class="card-img">
         <div class="card-badges">${badges.join("")}</div>
-        <span>${iniciais(a.nome)}</span>
       </div>
       <div class="card-body">
         <div class="card-nome">${a.nome}, ${a.idade}
@@ -75,8 +74,8 @@
         <div class="card-valor">${formatarValor(a.valor)}</div>
         <span class="card-cat">${ROTULO_CATEGORIA[a.categoria]}</span>
       </div>`;
-    // Usa o degradê SVG por cima da cor base para dar o "vulto".
-    el.querySelector(".card-img").style.backgroundImage = avatarBg(a.cor);
+    // Retrato de modelo estilizado (ilustração gerada) como "foto".
+    el.querySelector(".card-img").style.backgroundImage = retrato(a);
     el.querySelector(".card-img").style.backgroundSize = "cover";
     return el;
   }

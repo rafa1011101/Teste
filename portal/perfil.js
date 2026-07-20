@@ -23,9 +23,8 @@
   alvo.innerHTML = `
     <div class="perfil">
       <div>
-        <div class="perfil-foto" style="background:${anuncio.cor}">
+        <div class="perfil-foto">
           <div class="card-badges">${badges.join("")}</div>
-          <span>${iniciais(anuncio.nome)}</span>
         </div>
       </div>
       <div>
@@ -53,9 +52,9 @@
       </div>
     </div>`;
 
-  // Fundo em degradê por cima da cor base.
+  // Retrato de modelo estilizado (ilustração gerada).
   const foto = alvo.querySelector(".perfil-foto");
-  foto.style.backgroundImage = avatarBg(anuncio.cor);
+  foto.style.backgroundImage = retrato(anuncio);
   foto.style.backgroundSize = "cover";
 
   document.getElementById("btnWpp").addEventListener("click", () =>
