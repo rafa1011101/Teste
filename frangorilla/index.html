@@ -187,7 +187,7 @@ var springSpawns = [];  // molas {c, r} (tile)
 var FLAG_COL = 128;
 var CASTLE_COL = 132;
 var currentLevel = 1;
-var NUM_LEVELS = 2;
+var NUM_LEVELS = 3;
 
 function buildLevel(n) {
   grid = [];
@@ -222,9 +222,15 @@ function buildLevel(n) {
     platSpawns.push({ x: cx*TS, y: cr*TS, w: w, axis: axis, range: rangeTiles*TS, spd: spd || 0.02, phase: Math.random()*Math.PI*2 });
   }
   function spring(c) { springSpawns.push({ c: c, r: 12 }); }
+  // OVNI: patrulha voando. cx,cr centro (tiles); range/amp em tiles; spd velocidade
+  function ufo(cx, cr, rangeTiles, ampTiles, spd) {
+    enemySpawns.push({ x: cx*TS, y: cr*TS, type: 'ufo',
+                       x0: cx*TS, baseY: cr*TS, range: rangeTiles*TS, amp: ampTiles*TS, spd: spd || 0.02 });
+  }
 
-  if (n === 1) buildFase1(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring);
-  else         buildFase2(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring);
+  if (n === 1) buildFase1(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring, ufo);
+  else if (n === 2) buildFase2(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring, ufo);
+  else buildFase3(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring, ufo);
 }
 
 // ===== FASE 1 — Rio de Janeiro =====
@@ -345,6 +351,80 @@ function buildFase2(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat,
   coin(123, 6); coin(124, 5); coin(125, 4);
 }
 
+// ===== FASE 3 — Espanha com OVNIs (mais difícil) =====
+function buildFase3(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring, ufo) {
+  FLAG_COL = 132; CASTLE_COL = 136;
+  // --- Início ---
+  ground(0, 12);
+  brick(4, 9); pblock(5, 9); brick(6, 9);          // power logo no começo
+  coin(4, 6); coin(5, 6); coin(6, 6);
+  enemySpawns.push({ x: 8*TS, y: 12*TS, type: 'goomba' });
+  ufo(10, 6, 2, 1.2, 0.03);                         // 1º OVNI patrulhando
+  gap(13, 16);
+  plat(13, 9, 3, 'h', 3, 0.022);                    // plataforma cruza o buraco
+
+  // --- Trecho aéreo com OVNIs ---
+  ground(17, 30);
+  enemySpawns.push({ x: 20*TS, y: 12*TS, type: 'koopa' });
+  ufo(23, 5, 3, 1.5, 0.028);
+  brick(24, 8); brick(25, 8); pblock(26, 8); brick(27, 8);
+  coin(24, 6); coin(25, 6); coin(26, 6); coin(27, 6);
+  ufo(28, 7, 2, 1, 0.035);
+  pipe(29, 2); plantSpawns.push({ x: (29+1)*TS, y: 11*TS });
+  gap(31, 35);
+  plat(31, 8, 3, 'v', 2.5, 0.03);
+  plat(34, 10, 3, 'v', 2.5, 0.03);
+  ufo(33, 4, 1.5, 1, 0.04);
+
+  // --- Molas e OVNIs mergulhando ---
+  ground(36, 52);
+  spring(38);
+  brick(37, 4); qblock(38, 4); brick(39, 4);
+  coin(37, 2); coin(38, 2); coin(39, 2);
+  ufo(42, 6, 3, 2, 0.03);
+  enemySpawns.push({ x: 45*TS, y: 12*TS, type: 'goomba' });
+  enemySpawns.push({ x: 47*TS, y: 12*TS, type: 'goomba' });
+  ufo(49, 5, 2.5, 1.5, 0.032);
+  pipe(51, 3); plantSpawns.push({ x: (51+1)*TS, y: 10*TS });
+  gap(53, 58);
+  plat(54, 9, 3, 'h', 4, 0.02);                     // travessia longa
+  ufo(56, 5, 2, 1.2, 0.035);
+
+  // --- Enxame de OVNIs ---
+  ground(59, 76);
+  ufo(61, 4, 2, 1, 0.03);
+  ufo(64, 6, 2, 1.4, 0.036);
+  ufo(67, 5, 2.5, 1.2, 0.04);
+  enemySpawns.push({ x: 63*TS, y: 12*TS, type: 'koopa' });
+  spring(70);
+  brick(69, 4); brick(70, 4); pblock(71, 4); brick(72, 4);
+  coin(69, 2); coin(70, 2); coin(71, 2); coin(72, 2);
+  enemySpawns.push({ x: 74*TS, y: 12*TS, type: 'goomba' });
+  gap(77, 82);
+  plat(77, 8, 3, 'v', 2, 0.034);
+  plat(80, 10, 3, 'v', 2, 0.034);
+  ufo(79, 4, 1.5, 1, 0.042);
+
+  // --- Reta final vigiada ---
+  ground(83, 105);
+  enemySpawns.push({ x: 86*TS, y: 12*TS, type: 'goomba' });
+  enemySpawns.push({ x: 88*TS, y: 12*TS, type: 'koopa' });
+  ufo(90, 5, 3, 1.6, 0.03);
+  brick(94, 9); qblock(95, 9); brick(96, 9);
+  coin(94, 7); coin(95, 7); coin(96, 7);
+  pipe(99, 2); plantSpawns.push({ x: (99+1)*TS, y: 11*TS });
+  enemySpawns.push({ x: 102*TS, y: 12*TS, type: 'goomba' });
+  ufo(104, 6, 2, 1.2, 0.033);
+  gap(106, 110);
+  plat(106, 9, 3, 'h', 3.5, 0.024);
+
+  ground(111, COLS-1);
+  ufo(114, 5, 2, 1.4, 0.03);
+  enemySpawns.push({ x: 117*TS, y: 12*TS, type: 'koopa' });
+  stack(124, 1); stack(125, 2); stack(126, 3); stack(127, 4); stack(128, 5);
+  coin(125, 6); coin(126, 5); coin(127, 4);
+}
+
 function tileAt(c, r) {
   if (c < 0 || c >= COLS) return 1;
   if (r < 0) return 0;
@@ -402,6 +482,11 @@ function respawn(power) {
   shakeT = 0; shakeMag = 0;
   camX = 0;
   enemies = enemySpawns.map(function(s){
+    if (s.type === 'ufo') {
+      return { x: s.x, y: s.baseY, w: 40, h: 22, vx: 0, vy: 0, type: 'ufo', alive: true, squash: 0,
+               walkT: Math.random()*10, x0: s.x0, baseY: s.baseY, range: s.range, amp: s.amp, spd: s.spd,
+               phase: Math.random()*Math.PI*2 };
+    }
     return { x: s.x, y: s.y, w: 28, h: s.type==='koopa' ? 34 : 28,
              vx: -0.7, vy: 0, type: s.type, alive: true, squash: 0, walkT: Math.random()*10 };
   });
@@ -852,18 +937,28 @@ function update() {
 
   // --- inimigos ---
   enemies.forEach(function(en){
-    if (!en.alive) { en.squash++; return; }
+    if (!en.alive) { en.squash++; if (en.type === 'ufo') en.y += 3; return; }  // OVNI cai ao ser destruído
     if (Math.abs(en.x - player.x) > GW * 0.75 && en.x > camX + GW) return; // dorme fora da tela à direita
     en.walkT += 0.1;
-    en.hitWall = 0;
-    // não cair da borda de plataformas flutuantes: vira ao detectar vazio à frente
-    var aheadC = Math.floor((en.x + (en.vx > 0 ? en.w + 2 : -2)) / TS);
-    var footR = Math.floor((en.y + en.h + 2) / TS);
-    if (en.onGround && !isSolid(tileAt(aheadC, footR))) en.vx = -en.vx;
-    en.vy = Math.min(en.vy + GRAV, MAXFALL);
-    moveAndCollide(en);
-    if (en.hitWall) en.vx = en.hitWall > 0 ? -Math.abs(en.vx) : Math.abs(en.vx);
-    if (en.y > ROWS * TS + 40) en.alive = false;
+    if (en.type === 'ufo') {
+      // voa: patrulha horizontal + oscilação vertical; às vezes mergulha na direção do jogador
+      en.phase += en.spd;
+      en.x = en.x0 + Math.sin(en.phase) * en.range;
+      var dive = 0;
+      if (Math.abs(en.x - (player.x)) < 60) dive = Math.min(TS*2.2, Math.max(0, player.y - en.baseY) * 0.35);
+      en.y = en.baseY + Math.sin(en.phase * 1.7) * en.amp + dive;
+      en.onGround = false;
+    } else {
+      en.hitWall = 0;
+      // não cair da borda de plataformas flutuantes: vira ao detectar vazio à frente
+      var aheadC = Math.floor((en.x + (en.vx > 0 ? en.w + 2 : -2)) / TS);
+      var footR = Math.floor((en.y + en.h + 2) / TS);
+      if (en.onGround && !isSolid(tileAt(aheadC, footR))) en.vx = -en.vx;
+      en.vy = Math.min(en.vy + GRAV, MAXFALL);
+      moveAndCollide(en);
+      if (en.hitWall) en.vx = en.hitWall > 0 ? -Math.abs(en.vx) : Math.abs(en.vx);
+      if (en.y > ROWS * TS + 40) en.alive = false;
+    }
 
     // colisão com o jogador
     if (rectsOverlap(player, en)) {
@@ -1207,6 +1302,7 @@ function drawIpe(x, groundY, s) {
 
 function drawBackground() {
   if (currentLevel === 2) { drawBackgroundChapeco(); return; }
+  if (currentLevel === 3) { drawBackgroundEspanha(); return; }
   drawSky();
   drawSun();
   var p1 = camX * 0.15, p2 = camX * 0.3, p3 = camX * 0.5;
@@ -1238,6 +1334,134 @@ function drawBackground() {
   hz2.addColorStop(1, 'rgba(210,232,246,0.22)');
   ctx.fillStyle = hz2;
   ctx.fillRect(0, 360, GW, 120);
+}
+
+// Sagrada Família (torres pontudas de Barcelona) — silhueta ao entardecer
+function drawSagrada(px) {
+  var bx = 560 - px, by = 452;
+  ctx.save();
+  function spire(sx, h, w) {
+    var g = ctx.createLinearGradient(sx, by - h, sx, by);
+    g.addColorStop(0, '#c79a5b'); g.addColorStop(1, '#8f6b3a');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(sx - w, by); ctx.lineTo(sx - w, by - h*0.55);
+    ctx.lineTo(sx, by - h); ctx.lineTo(sx + w, by - h*0.55); ctx.lineTo(sx + w, by);
+    ctx.closePath(); ctx.fill();
+    // topo colorido (mosaico)
+    ctx.fillStyle = '#e05a86';
+    ctx.beginPath(); ctx.arc(sx, by - h + 4, w*0.5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#f2c94c';
+    ctx.beginPath(); ctx.arc(sx, by - h + 1, w*0.28, 0, 7); ctx.fill();
+    // janelinhas
+    ctx.fillStyle = 'rgba(60,40,20,0.5)';
+    for (var wy = by - h*0.5; wy < by - 8; wy += 16) ctx.fillRect(sx - 2, wy, 4, 8);
+  }
+  // base
+  ctx.fillStyle = '#a97f47';
+  ctx.fillRect(bx - 60, by - 70, 120, 70);
+  spire(bx - 44, 150, 12);
+  spire(bx - 20, 200, 13);
+  spire(bx + 6, 230, 14);
+  spire(bx + 32, 195, 13);
+  spire(bx + 54, 145, 11);
+  ctx.restore();
+}
+
+// touro de Osborne (silhueta preta icônica) numa colina
+function drawTouro(px) {
+  var bx = 1050 - px, by = 452;
+  ctx.save();
+  ctx.fillStyle = '#1a1a1e';
+  // corpo
+  ctx.beginPath();
+  ctx.moveTo(bx - 40, by); ctx.lineTo(bx - 34, by - 34);
+  ctx.lineTo(bx - 20, by - 40); ctx.lineTo(bx + 20, by - 42);
+  ctx.lineTo(bx + 38, by - 34); ctx.lineTo(bx + 40, by); ctx.lineTo(bx + 30, by);
+  ctx.lineTo(bx + 28, by - 22); ctx.lineTo(bx - 28, by - 22); ctx.lineTo(bx - 30, by); ctx.closePath();
+  ctx.fill();
+  // cabeça e chifres
+  ctx.beginPath();
+  ctx.moveTo(bx + 36, by - 40); ctx.lineTo(bx + 52, by - 46); ctx.lineTo(bx + 46, by - 30); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#1a1a1e'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(bx + 50, by - 44); ctx.lineTo(bx + 58, by - 54);
+  ctx.moveTo(bx + 44, by - 44); ctx.lineTo(bx + 40, by - 56); ctx.stroke();
+  // rabo
+  ctx.beginPath(); ctx.moveTo(bx - 38, by - 32); ctx.lineTo(bx - 50, by - 24); ctx.lineTo(bx - 46, by - 14); ctx.stroke();
+  ctx.restore();
+}
+
+// OVNI distante de cenário com feixe
+function drawBgUfo(x, y, s, beam) {
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(s, s);
+  if (beam) {
+    var bg = ctx.createLinearGradient(0, 6, 0, 90);
+    bg.addColorStop(0, 'rgba(150,255,200,0.28)'); bg.addColorStop(1, 'rgba(150,255,200,0)');
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.moveTo(-6, 6); ctx.lineTo(6, 6); ctx.lineTo(22, 90); ctx.lineTo(-22, 90); ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = '#aab3c0';
+  ctx.beginPath(); ctx.ellipse(0, 2, 20, 6, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#7fd0b0';
+  ctx.beginPath(); ctx.arc(0, 0, 8, Math.PI, 0); ctx.fill();
+  var blink = Math.floor(frameCount / 10) % 2;
+  ctx.fillStyle = blink ? '#fff3a0' : '#ff5a4d';
+  ctx.beginPath(); ctx.arc(-10, 3, 1.8, 0, 7); ctx.arc(10, 3, 1.8, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+function drawSkyEspanha() {
+  var g = ctx.createLinearGradient(0, 0, 0, GH);
+  g.addColorStop(0, '#2a2350');
+  g.addColorStop(0.45, '#6b3f77');
+  g.addColorStop(0.72, '#d76a53');
+  g.addColorStop(1, '#f2b061');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, GW, GH);
+  // estrelas no alto
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  for (var i = 0; i < 40; i++) {
+    var sx = (i * 137) % GW, sy = (i * 89) % 200;
+    var tw = 0.4 + 0.6 * Math.abs(Math.sin(frameCount * 0.05 + i));
+    ctx.globalAlpha = tw * 0.8;
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawBackgroundEspanha() {
+  drawSkyEspanha();
+  // lua/sol poente
+  var sx = 820, sy = 120;
+  var sg = ctx.createRadialGradient(sx, sy, 6, sx, sy, 90);
+  sg.addColorStop(0, 'rgba(255,235,200,0.95)'); sg.addColorStop(1, 'rgba(255,200,150,0)');
+  ctx.fillStyle = sg; ctx.fillRect(sx - 95, sy - 95, 190, 190);
+  ctx.fillStyle = '#ffe9c2';
+  ctx.beginPath(); ctx.arc(sx, sy, 28, 0, 7); ctx.fill();
+  var p2 = camX * 0.3, p3 = camX * 0.5, p4 = camX * 0.62;
+  // OVNIs de cenário ao fundo (parallax)
+  for (var i = 0; i < 5; i++) {
+    var ux = ((i * 260 + 60 - camX * 0.2) % (GW + 300)) - 100;
+    drawBgUfo(ux, 90 + (i % 3) * 40, 0.7 + (i % 2) * 0.4, i % 2 === 0);
+  }
+  drawSagrada(p3 % 1700);
+  drawSagrada((p3 % 1700) - 1700);
+  drawTouro(p3 % 1700);
+  drawTouro((p3 % 1700) - 1700);
+  // névoa quente de profundidade
+  var hz = ctx.createLinearGradient(0, 320, 0, 470);
+  hz.addColorStop(0, 'rgba(230,150,110,0)');
+  hz.addColorStop(1, 'rgba(230,150,110,0.45)');
+  ctx.fillStyle = hz; ctx.fillRect(0, 320, GW, 150);
+  // arbustos/colinas escuras em primeiro plano
+  for (var j = 0; j < 10; j++) {
+    var bx = ((j * 280 - p4) % (GW + 560));
+    if (bx < -280) bx += GW + 560;
+    bx -= 140;
+    ctx.fillStyle = j % 2 ? '#4a5a3a' : '#3f5033';
+    ctx.beginPath(); ctx.arc(bx, 476, 70 + (j % 3) * 22, Math.PI, 0); ctx.fill();
+  }
 }
 
 function drawBackgroundChapeco() {
@@ -1699,6 +1923,56 @@ function drawKoopa(en) {
   ctx.restore();
 }
 
+function drawUfo(en) {
+  var x = en.x - camX, y = en.y;
+  if (x < -80 || x > GW + 80) return;
+  var cx = x + en.w/2, cy = y + en.h/2;
+  ctx.save();
+  if (!en.alive) { ctx.globalAlpha = Math.max(0, 1 - en.squash / 30); ctx.translate(cx, cy); ctx.rotate(en.squash * 0.3); ctx.translate(-cx, -cy); }
+  // feixe de luz (trator) apontando pro chão quando vivo
+  if (en.alive) {
+    var gy = groundYBelow(cx + camX, cy);
+    if (gy > 0) {
+      var bg = ctx.createLinearGradient(cx, cy, cx, gy);
+      bg.addColorStop(0, 'rgba(120,255,180,0.30)');
+      bg.addColorStop(1, 'rgba(120,255,180,0)');
+      ctx.fillStyle = bg;
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, cy + 4); ctx.lineTo(cx + 6, cy + 4);
+      ctx.lineTo(cx + 22, gy); ctx.lineTo(cx - 22, gy); ctx.closePath(); ctx.fill();
+    }
+  }
+  // sombra do casco
+  ctx.fillStyle = '#5a6270';
+  ctx.beginPath(); ctx.ellipse(cx, cy + 5, en.w/2, 7, 0, 0, 7); ctx.fill();
+  // corpo metálico
+  var mg = ctx.createLinearGradient(cx, cy - 6, cx, cy + 8);
+  mg.addColorStop(0, '#d5dbe4'); mg.addColorStop(1, '#8a94a3');
+  ctx.fillStyle = mg;
+  ctx.beginPath(); ctx.ellipse(cx, cy + 2, en.w/2, 9, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#5a6270'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(cx, cy + 2, en.w/2, 9, 0, 0, 7); ctx.stroke();
+  // cúpula de vidro
+  var dg = ctx.createRadialGradient(cx - 3, cy - 6, 1, cx, cy - 3, 12);
+  dg.addColorStop(0, '#e8fff4'); dg.addColorStop(1, '#57c6a0');
+  ctx.fillStyle = dg;
+  ctx.beginPath(); ctx.arc(cx, cy - 1, 11, Math.PI, 0); ctx.fill();
+  ctx.strokeStyle = '#3a8f74'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(cx, cy - 1, 11, Math.PI, 0); ctx.stroke();
+  // alienzinho na cúpula
+  ctx.fillStyle = '#7bd88f';
+  ctx.beginPath(); ctx.arc(cx, cy - 4, 3.4, 0, 7); ctx.fill();
+  ctx.fillStyle = '#20303a';
+  ctx.beginPath(); ctx.ellipse(cx - 1.3, cy - 4, 1, 1.6, 0.4, 0, 7); ctx.ellipse(cx + 1.3, cy - 4, 1, 1.6, -0.4, 0, 7); ctx.fill();
+  // luzes piscando na borda
+  var blink = Math.floor(frameCount / 8) % 4;
+  for (var i = 0; i < 4; i++) {
+    ctx.fillStyle = (i === blink) ? '#fff3a0' : '#ff5a4d';
+    ctx.beginPath(); ctx.arc(cx - 15 + i * 10, cy + 5, 2.2, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawPlant(pl) {
   var x = pl.x - camX;
   if (x < -60 || x > GW + 60) return;
@@ -1988,7 +2262,8 @@ function drawHUD() {
   textOutline('' + Math.max(0, timeLeft), GW - 20, 64, 24, '#fff', 'right');
 
   drawBrazilFlag(40, GH - 28, 1);
-  textOutline('MUNDO 1-' + currentLevel + '  ' + (currentLevel === 1 ? 'RIO' : 'CHAPECÓ'), 66, GH - 28, 20, '#fff');
+  var cityName = currentLevel === 1 ? 'RIO' : (currentLevel === 2 ? 'CHAPECÓ' : 'ESPANHA');
+  textOutline('MUNDO 1-' + currentLevel + '  ' + cityName, 66, GH - 28, 20, '#fff');
 
   // indicador de poder
   var pw = player ? player.power : 0;
@@ -2162,7 +2437,9 @@ function draw() {
   });
   if (!player.dead) drawShadow(player.x + player.w/2, player.y + player.h, player.w + 6);
   enemies.forEach(function(en){
-    if (en.type === 'goomba') drawGoomba(en); else drawKoopa(en);
+    if (en.type === 'goomba') drawGoomba(en);
+    else if (en.type === 'koopa') drawKoopa(en);
+    else drawUfo(en);
   });
   drawFireballs();
   drawFrangorilla(player.x - camX, player.y, player.facing, player.walkT, player.onGround, player.inv, player.dead, player.sx, player.sy, player.w, player.h, player.power, player.grow);
