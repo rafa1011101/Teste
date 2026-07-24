@@ -187,7 +187,7 @@ var springSpawns = [];  // molas {c, r} (tile)
 var FLAG_COL = 128;
 var CASTLE_COL = 132;
 var currentLevel = 1;
-var NUM_LEVELS = 3;
+var NUM_LEVELS = 4;
 
 function buildLevel(n) {
   grid = [];
@@ -228,9 +228,11 @@ function buildLevel(n) {
                        x0: cx*TS, baseY: cr*TS, range: rangeTiles*TS, amp: ampTiles*TS, spd: spd || 0.02 });
   }
 
+  bossSpawn = null;
   if (n === 1) buildFase1(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring, ufo);
   else if (n === 2) buildFase2(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring, ufo);
-  else buildFase3(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring, ufo);
+  else if (n === 3) buildFase3(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring, ufo);
+  else buildFase4(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring, ufo);
 }
 
 // ===== FASE 1 — Rio de Janeiro =====
@@ -425,6 +427,41 @@ function buildFase3(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat,
   coin(125, 6); coin(126, 5); coin(127, 4);
 }
 
+// ===== FASE 4 — Covil do Dragão (chefão) =====
+function buildFase4(ground, stack, brick, qblock, pblock, coin, pipe, gap, plat, spring, ufo) {
+  FLAG_COL = 999; CASTLE_COL = 999;   // sem bandeira: a fase acaba quando o chefão morre
+  // --- Entrada: garante poder de fogo ---
+  ground(0, 16);
+  brick(4, 9); pblock(5, 9); brick(6, 9);   // cogumelo/flor
+  pblock(9, 9);                             // 2º power (vira fogo)
+  coin(4, 6); coin(5, 6); coin(6, 6);
+  enemySpawns.push({ x: 12*TS, y: 12*TS, type: 'goomba' });
+
+  // --- Corredor de plantas carnívoras (antes do chefão) ---
+  ground(17, 78);
+  pipe(19, 2); plantSpawns.push({ x: (19+1)*TS, y: 11*TS });
+  pipe(24, 3); plantSpawns.push({ x: (24+1)*TS, y: 10*TS });
+  enemySpawns.push({ x: 28*TS, y: 12*TS, type: 'goomba' });
+  pipe(31, 2); plantSpawns.push({ x: (31+1)*TS, y: 11*TS });
+  brick(34, 9); qblock(35, 9); brick(36, 9);
+  coin(34, 7); coin(35, 7); coin(36, 7);
+  pipe(38, 3); plantSpawns.push({ x: (38+1)*TS, y: 10*TS });
+  pipe(43, 2); plantSpawns.push({ x: (43+1)*TS, y: 11*TS });
+  enemySpawns.push({ x: 47*TS, y: 12*TS, type: 'koopa' });
+  pipe(50, 3); plantSpawns.push({ x: (50+1)*TS, y: 10*TS });
+  pipe(55, 2); plantSpawns.push({ x: (55+1)*TS, y: 11*TS });
+  pipe(59, 2); plantSpawns.push({ x: (59+1)*TS, y: 11*TS });
+  enemySpawns.push({ x: 63*TS, y: 12*TS, type: 'goomba' });
+  pblock(66, 9);                            // reforço de poder antes da arena
+  pipe(69, 3); plantSpawns.push({ x: (69+1)*TS, y: 10*TS });
+  pipe(74, 2); plantSpawns.push({ x: (74+1)*TS, y: 11*TS });
+  gap(79, 81);                             // fosso de lava antes da arena
+
+  // --- Arena do chefão ---
+  ground(82, COLS-1);
+  bossSpawn = { x: 116*TS, y: 9*TS };      // dragão paira na arena (buraco alcançável)
+}
+
 function tileAt(c, r) {
   if (c < 0 || c >= COLS) return 1;
   if (r < 0) return 0;
@@ -434,9 +471,11 @@ function tileAt(c, r) {
 function isSolid(t) { return (t >= 1 && t <= 8) && t !== 9; }  // 8 = bloco ? de power-up também é sólido
 
 // ---------- Estado do jogo ----------
-var state = 'title';   // title | play | win | gameover
+var state = 'title';   // title | play | levelclear | win | gameover
 var player, enemies, plants, particles, popups;
 var movingPlats = [], springs = [], powerups = [], fireballs = [];
+var boss = null, bossShots = [], bossSpawn = null;
+var levelClearT = 0;
 var camX = 0;
 var score, coins, lives, stars, timeLeft, timeTick;
 var worldEndX = COLS * TS;
@@ -488,7 +527,7 @@ function respawn(power) {
                phase: Math.random()*Math.PI*2 };
     }
     return { x: s.x, y: s.y, w: 28, h: s.type==='koopa' ? 34 : 28,
-             vx: -0.7, vy: 0, type: s.type, alive: true, squash: 0, walkT: Math.random()*10 };
+             vx: -0.75, vy: 0, speed: 0.75, turnCd: 0, type: s.type, alive: true, squash: 0, walkT: Math.random()*10 };
   });
   plants = plantSpawns.map(function(s){
     return { x: s.x, topY: s.y, t: Math.random()*Math.PI*2 };
@@ -502,6 +541,13 @@ function respawn(power) {
   });
   powerups = [];
   fireballs = [];
+  bossShots = [];
+  boss = bossSpawn ? {
+    x: bossSpawn.x, y: bossSpawn.y, w: 120, h: 92,
+    baseX: bossSpawn.x, baseY: bossSpawn.y,
+    hp: 6, maxHp: 6, phase: Math.random()*6, fireCd: 130, hurtT: 0,
+    dead: false, deadT: 0, active: false
+  } : null;
   particles = [];
   popups = [];
 }
@@ -516,6 +562,15 @@ window.addEventListener('keydown', function(e){
   if (state !== 'play' && (e.code === 'Enter' || e.code === 'Space')) startFromMenu();
 });
 window.addEventListener('keyup', function(e){ keys[e.code] = false; });
+// evita "tecla presa" (correr sem parar) quando a aba perde o foco
+function clearInputs() {
+  keys = {};
+  activePointers = {};
+  touchState.left = touchState.right = touchState.jump = touchState.fire = false;
+  jumpHeld = false; jumpBuf = 0;
+}
+window.addEventListener('blur', clearInputs);
+document.addEventListener('visibilitychange', function(){ if (document.hidden) clearInputs(); });
 
 // Botões de toque (desenhados no canvas)
 var btnL = { x: 78,  y: GH-78, r: 46 };
@@ -803,21 +858,77 @@ function collideSprings(pFeet) {
   });
 }
 
+function startLevelClear() {
+  state = 'levelclear';
+  levelClearT = 0;
+  flagReached = false;
+  clearInputs();
+}
+
+function bossHoleBox() {
+  return { x: boss.x + boss.w/2 - 16, y: boss.y + boss.h*0.42, w: 32, h: 30 };
+}
+function hitBoss() {
+  if (!boss || boss.dead || boss.hurtT > 8) return;   // pequenos frames de invencibilidade
+  boss.hp--;
+  boss.hurtT = 26;
+  addShake(4, 14);
+  SFX.stomp();
+  addStars(boss.x + boss.w/2, boss.y + boss.h*0.5, 8);
+  popups.push({ x: boss.x + boss.w/2, y: boss.y, txt: boss.hp > 0 ? 'ACERTOU!' : 'K.O.!', t: 0 });
+  if (boss.hp <= 0) { boss.dead = true; boss.deadT = 0; SFX.win(); }
+}
+function updateBoss() {
+  if (!boss) return;
+  if (boss.dead) {
+    boss.deadT++;
+    if (boss.deadT % 5 === 0) { addStars(boss.x + Math.random()*boss.w, boss.y + Math.random()*boss.h, 4); addShake(3, 6); }
+    boss.y += 0.6;   // afunda derrotado
+    if (boss.deadT > 150 && state === 'play') { score += 5000; startLevelClear(); }
+    return;
+  }
+  if (!boss.active && player.x > boss.baseX - GW*0.75) boss.active = true;
+  if (!boss.active) return;
+  boss.phase += 0.03;
+  boss.x = boss.baseX + Math.sin(boss.phase) * 60;
+  boss.y = boss.baseY + Math.sin(boss.phase*1.6) * 18;
+  if (boss.hurtT > 0) boss.hurtT--;
+  // cospe fogo (leque de 3)
+  boss.fireCd--;
+  if (boss.fireCd <= 0) {
+    var mx = boss.x + 8, my = boss.y + boss.h*0.32;
+    for (var i = -1; i <= 1; i++) bossShots.push({ x: mx, y: my, w: 16, h: 16, vx: -4.3, vy: -1.6 + i*1.7, life: 220, rot: 0 });
+    boss.fireCd = 95;
+    SFX.fire();
+  }
+  // encostar no corpo do chefão machuca
+  var body = { x: boss.x + 10, y: boss.y + 8, w: boss.w - 20, h: boss.h - 12 };
+  if (rectsOverlap(player, body)) hurtPlayer();
+}
+
 function update() {
   frameCount++;
+
+  // --- tela de "FASE CONCLUÍDA" (pausa antes da próxima fase) ---
+  if (state === 'levelclear') {
+    levelClearT++;
+    if (levelClearT > 200) {
+      if (currentLevel < NUM_LEVELS) { nextLevel(); state = 'play'; clearInputs(); }
+      else state = 'win';
+    }
+    return;
+  }
+
   if (state !== 'play') return;
 
-  // --- vitória / fim de fase em andamento ---
+  // --- fim de fase em andamento (anda até sumir, depois mostra a tela) ---
   if (flagReached) {
     winTimer++;
     player.vx = 1.6; player.facing = 1;
     player.vy = Math.min(player.vy + GRAV, MAXFALL);
     player.walkT += 0.2;
     moveAndCollide(player);
-    if (winTimer > 150) {
-      if (currentLevel < NUM_LEVELS) nextLevel();  // vai pra próxima fase
-      else state = 'win';
-    }
+    if (winTimer > 130) startLevelClear();
     return;
   }
 
@@ -950,13 +1061,16 @@ function update() {
       en.onGround = false;
     } else {
       en.hitWall = 0;
+      if (en.turnCd > 0) en.turnCd--;
       // não cair da borda de plataformas flutuantes: vira ao detectar vazio à frente
-      var aheadC = Math.floor((en.x + (en.vx > 0 ? en.w + 2 : -2)) / TS);
+      var dir = en.vx >= 0 ? 1 : -1;
+      var aheadC = Math.floor((en.x + (dir > 0 ? en.w + 2 : -2)) / TS);
       var footR = Math.floor((en.y + en.h + 2) / TS);
-      if (en.onGround && !isSolid(tileAt(aheadC, footR))) en.vx = -en.vx;
+      if (en.onGround && en.turnCd <= 0 && !isSolid(tileAt(aheadC, footR))) { dir = -dir; en.turnCd = 12; }
+      en.vx = dir * en.speed;                       // sempre em movimento (nunca fica parado)
       en.vy = Math.min(en.vy + GRAV, MAXFALL);
       moveAndCollide(en);
-      if (en.hitWall) en.vx = en.hitWall > 0 ? -Math.abs(en.vx) : Math.abs(en.vx);
+      if (en.hitWall && en.turnCd <= 0) { en.vx = -en.hitWall * en.speed; en.turnCd = 12; }  // ao bater, inverte com velocidade cheia
       if (en.y > ROWS * TS + 40) en.alive = false;
     }
 
@@ -987,6 +1101,7 @@ function update() {
 
   // --- plantas carnívoras ---
   plants.forEach(function(pl){
+    if (pl.dead) { pl.deadT = (pl.deadT || 0) + 1; return; }
     pl.t += 0.02;
     var phase = (Math.sin(pl.t) + 1) / 2;  // 0..1
     pl.out = Math.max(0, phase * 1.4 - 0.4); // fica um tempo escondida
@@ -1030,11 +1145,40 @@ function update() {
         SFX.stomp();
       }
     });
+    // bola de fogo também mata as plantas carnívoras (dentro dos canos)
+    plants.forEach(function(pl){
+      if (pl.dead || pl.out <= 0.1) return;
+      var ph = 40 * pl.out;
+      var box = { x: pl.x - 12, y: pl.topY - ph, w: 24, h: ph };
+      if (rectsOverlap(fb, box)) {
+        pl.dead = true; pl.deadT = 0; fb.dead = true;
+        score += 200;
+        addStars(pl.x, pl.topY - ph, 6);
+        popups.push({ x: pl.x, y: pl.topY - ph - 6, txt: '+200', t: 0 });
+        SFX.stomp();
+      }
+    });
+    // dano no chefão (buraco na barriga)
+    if (boss && !boss.dead) {
+      var hole = bossHoleBox();
+      if (rectsOverlap(fb, hole)) { fb.dead = true; hitBoss(); }
+    }
   });
   fireballs = fireballs.filter(function(f){ return !f.dead; });
 
   // --- molas: relaxa a compressão ---
   springs.forEach(function(s){ if (s.comp > 0) s.comp--; });
+
+  // --- chefão e seus tiros ---
+  updateBoss();
+  bossShots.forEach(function(s){
+    s.life--; s.rot += 0.4;
+    s.vy = Math.min(s.vy + 0.12, 8);
+    s.x += s.vx; s.y += s.vy;
+    if (s.life <= 0 || s.y > ROWS*TS || s.x < camX - 60) s.dead = true;
+    if (!s.dead && player.inv <= 0 && !player.dead && rectsOverlap(player, s)) { s.dead = true; hurtPlayer(); }
+  });
+  bossShots = bossShots.filter(function(s){ return !s.dead; });
 
   // --- partículas e popups ---
   particles.forEach(function(p){
@@ -1303,6 +1447,7 @@ function drawIpe(x, groundY, s) {
 function drawBackground() {
   if (currentLevel === 2) { drawBackgroundChapeco(); return; }
   if (currentLevel === 3) { drawBackgroundEspanha(); return; }
+  if (currentLevel === 4) { drawBackgroundCovil(); return; }
   drawSky();
   drawSun();
   var p1 = camX * 0.15, p2 = camX * 0.3, p3 = camX * 0.5;
@@ -1411,6 +1556,50 @@ function drawBgUfo(x, y, s, beam) {
   ctx.restore();
 }
 
+function drawBackgroundCovil() {
+  // céu do covil: vermelho-escuro com brilho de lava embaixo
+  var g = ctx.createLinearGradient(0, 0, 0, GH);
+  g.addColorStop(0, '#1a0e14');
+  g.addColorStop(0.5, '#3a1418');
+  g.addColorStop(1, '#7a2418');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, GW, GH);
+  // brilho pulsante de lava no horizonte
+  var glow = 0.5 + 0.5 * Math.sin(frameCount * 0.05);
+  var lg = ctx.createLinearGradient(0, 300, 0, 470);
+  lg.addColorStop(0, 'rgba(255,90,20,0)');
+  lg.addColorStop(1, 'rgba(255,120,30,' + (0.25 + 0.15*glow) + ')');
+  ctx.fillStyle = lg; ctx.fillRect(0, 300, GW, 170);
+  // tijolos de castelo ao fundo (parede escura com parallax)
+  var p = camX * 0.3;
+  ctx.fillStyle = '#2a1c22';
+  for (var ry = 100; ry < 470; ry += 34) {
+    for (var i = -1; i < GW/68 + 1; i++) {
+      var off = ((ry/34) % 2) * 34;
+      var bx = ((i*68 + off - p) % (GW + 136));
+      if (bx < -68) bx += GW + 136;
+      ctx.fillRect(bx, ry, 64, 30);
+    }
+  }
+  // colunas/pilastras escuras
+  ctx.fillStyle = '#1c1218';
+  var p2 = camX * 0.5;
+  for (var j = 0; j < 6; j++) {
+    var cx = ((j*300 - p2) % (GW + 600));
+    if (cx < -60) cx += GW + 600;
+    cx -= 60;
+    ctx.fillRect(cx, 120, 40, 340);
+    ctx.fillStyle = '#241820'; ctx.fillRect(cx - 6, 120, 52, 14); ctx.fillRect(cx - 6, 446, 52, 14);
+    ctx.fillStyle = '#1c1218';
+  }
+  // faíscas subindo
+  ctx.fillStyle = 'rgba(255,170,60,0.6)';
+  for (var s = 0; s < 24; s++) {
+    var sx = (s*167 + frameCount*1.5) % GW;
+    var sy = 460 - ((s*97 + frameCount*2) % 360);
+    ctx.fillRect(sx, sy, 2, 3);
+  }
+}
+
 function drawSkyEspanha() {
   var g = ctx.createLinearGradient(0, 0, 0, GH);
   g.addColorStop(0, '#2a2350');
@@ -1511,27 +1700,33 @@ function drawShadow(wx, footY, w) {
 }
 
 function drawWater() {
-  // água nos buracos
+  // água nos buracos (ou lava na fase do chefão)
   if (!waterCols.length) return;
+  var lava = (currentLevel === 4);
   ctx.save();
   var surf = 13 * TS + 10;
   waterCols.forEach(function(c){
     var x = c * TS - camX;
     if (x < -TS || x > GW) return;
     var g = ctx.createLinearGradient(0, surf, 0, GH);
-    g.addColorStop(0, '#3f8fd4');
-    g.addColorStop(1, '#175a9e');
+    if (lava) { g.addColorStop(0, '#ff7a1a'); g.addColorStop(1, '#8a1400'); }
+    else      { g.addColorStop(0, '#3f8fd4'); g.addColorStop(1, '#175a9e'); }
     ctx.fillStyle = g;
     ctx.fillRect(x, surf, TS + 1, GH - surf);
-    // onda
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
     var w = Math.sin(frameCount * 0.08 + c) * 3;
-    ctx.fillRect(x, surf - 2 + w * 0.4, TS + 1, 3);
-    // reflexos e cintilação
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.fillRect(x + 4, surf + 16 + Math.sin(frameCount * 0.05 + c * 1.3) * 5, TS - 8, 2);
-    ctx.fillStyle = 'rgba(180,225,255,0.14)';
-    ctx.fillRect(x + 8, surf + 38 + Math.cos(frameCount * 0.04 + c * 0.9) * 7, TS - 14, 2);
+    if (lava) {
+      ctx.fillStyle = 'rgba(255,230,120,0.8)';
+      ctx.fillRect(x, surf - 2 + w * 0.4, TS + 1, 3);
+      ctx.fillStyle = 'rgba(255,180,60,0.35)';
+      ctx.fillRect(x + 4, surf + 14 + Math.sin(frameCount*0.06 + c)*4, TS - 8, 3);
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(x, surf - 2 + w * 0.4, TS + 1, 3);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(x + 4, surf + 16 + Math.sin(frameCount * 0.05 + c * 1.3) * 5, TS - 8, 2);
+      ctx.fillStyle = 'rgba(180,225,255,0.14)';
+      ctx.fillRect(x + 8, surf + 38 + Math.cos(frameCount * 0.04 + c * 0.9) * 7, TS - 14, 2);
+    }
   });
   ctx.restore();
 }
@@ -1973,7 +2168,153 @@ function drawUfo(en) {
   ctx.restore();
 }
 
+// ---------- Chefão: DRAGÃO DE 10 BRAÇOS ----------
+function drawBoss() {
+  if (!boss) return;
+  var x = boss.x - camX, y = boss.y;
+  var cx = x + boss.w/2, cy = y + boss.h/2;
+  ctx.save();
+  if (boss.dead) ctx.globalAlpha = Math.max(0, 1 - boss.deadT / 150);
+  var hurt = boss.hurtT > 0 && Math.floor(boss.hurtT / 3) % 2 === 0;
+  var bodyCol = hurt ? '#ffffff' : '#6a2f8f';
+  var bellyCol = hurt ? '#ffdede' : '#9a56c0';
+
+  // 10 braços (tentáculos) ondulando ao redor do corpo
+  ctx.strokeStyle = hurt ? '#ffffff' : '#57277a';
+  ctx.lineCap = 'round';
+  for (var a = 0; a < 10; a++) {
+    var side = a < 5 ? -1 : 1;              // 5 de cada lado
+    var idx = a % 5;
+    var ay = y + 18 + idx * 15;
+    var wave = Math.sin(frameCount * 0.12 + a * 0.9) * 12;
+    var baseX = cx + side * (boss.w * 0.34);
+    var tipX = baseX + side * (34 + Math.abs(wave));
+    ctx.lineWidth = 8 - idx * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(baseX, ay);
+    ctx.quadraticCurveTo(baseX + side * 22, ay + wave, tipX, ay + wave * 0.6);
+    ctx.stroke();
+    // ventosa na ponta
+    ctx.fillStyle = hurt ? '#fff' : '#8a45b5';
+    ctx.beginPath(); ctx.arc(tipX, ay + wave * 0.6, 4, 0, 7); ctx.fill();
+  }
+
+  // corpo
+  ctx.fillStyle = bodyCol;
+  ctx.beginPath(); ctx.ellipse(cx, cy, boss.w/2, boss.h/2, 0, 0, 7); ctx.fill();
+  // escamas na crista (costas)
+  ctx.fillStyle = hurt ? '#ffd0d0' : '#e0553f';
+  for (var s = 0; s < 5; s++) {
+    ctx.beginPath();
+    ctx.moveTo(cx - 30 + s*15, y + 6);
+    ctx.lineTo(cx - 22 + s*15, y - 10);
+    ctx.lineTo(cx - 14 + s*15, y + 6);
+    ctx.closePath(); ctx.fill();
+  }
+  // barriga com o BURACO (ponto fraco)
+  ctx.fillStyle = bellyCol;
+  ctx.beginPath(); ctx.ellipse(cx, cy + 8, boss.w*0.3, boss.h*0.32, 0, 0, 7); ctx.fill();
+  var hole = bossHoleBox();
+  var hx = hole.x - camX + hole.w/2, hy = hole.y + hole.h/2;
+  var pulse = 0.5 + 0.5 * Math.sin(frameCount * 0.18);
+  var hg = ctx.createRadialGradient(hx, hy, 2, hx, hy, hole.w/2 + 4);
+  hg.addColorStop(0, '#ffd23a');
+  hg.addColorStop(0.5, '#ff7a1a');
+  hg.addColorStop(1, '#2a0808');
+  ctx.fillStyle = hg;
+  ctx.beginPath(); ctx.ellipse(hx, hy, hole.w/2, hole.h/2, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,120,40,' + (0.4 + 0.5*pulse) + ')'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(hx, hy, hole.w/2 + 2, hole.h/2 + 2, 0, 0, 7); ctx.stroke();
+
+  // cabeça (esquerda, virada pro jogador) com chifres e olhos
+  var hxh = x + 6, hyh = y + boss.h*0.28;
+  ctx.fillStyle = bodyCol;
+  ctx.beginPath(); ctx.ellipse(hxh, hyh, 26, 22, 0, 0, 7); ctx.fill();
+  // chifres
+  ctx.fillStyle = hurt ? '#fff' : '#e8dcc0';
+  ctx.beginPath(); ctx.moveTo(hxh - 8, hyh - 16); ctx.lineTo(hxh - 16, hyh - 34); ctx.lineTo(hxh - 2, hyh - 18); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(hxh + 8, hyh - 16); ctx.lineTo(hxh + 4, hyh - 36); ctx.lineTo(hxh + 16, hyh - 16); ctx.closePath(); ctx.fill();
+  // olhos bravos
+  ctx.fillStyle = '#ffd23a';
+  ctx.beginPath(); ctx.arc(hxh - 8, hyh - 2, 5, 0, 7); ctx.arc(hxh + 8, hyh - 2, 5, 0, 7); ctx.fill();
+  ctx.fillStyle = '#20160a';
+  ctx.beginPath(); ctx.arc(hxh - 8, hyh - 1, 2.4, 0, 7); ctx.arc(hxh + 8, hyh - 1, 2.4, 0, 7); ctx.fill();
+  ctx.strokeStyle = hurt ? '#fff' : '#3a1a1a'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(hxh - 14, hyh - 12); ctx.lineTo(hxh - 3, hyh - 6);
+  ctx.moveTo(hxh + 14, hyh - 12); ctx.lineTo(hxh + 3, hyh - 6); ctx.stroke();
+  // focinho soltando fumaça/fogo quando vai cuspir
+  ctx.fillStyle = hurt ? '#fff' : '#57277a';
+  ctx.beginPath(); ctx.ellipse(hxh - 16, hyh + 8, 10, 7, 0, 0, 7); ctx.fill();
+  if (boss.active && !boss.dead && boss.fireCd < 22) {
+    ctx.fillStyle = 'rgba(255,150,40,0.85)';
+    ctx.beginPath(); ctx.arc(hxh - 26, hyh + 8, 6 + (22-boss.fireCd)*0.5, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBossShots() {
+  bossShots.forEach(function(s){
+    var x = s.x - camX + s.w/2, y = s.y + s.h/2;
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(s.rot);
+    ctx.fillStyle = '#ff4a1a';
+    ctx.beginPath(); ctx.arc(0, 0, 8, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ffd23a';
+    ctx.beginPath(); ctx.arc(0, 0, 4, 0, 7); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255,120,40,0.35)';
+    ctx.beginPath(); ctx.arc(x - s.vx*1.6, y - s.vy*0.8, 5, 0, 7); ctx.fill();
+  });
+}
+
+function drawBossHP() {
+  if (!boss || !boss.active || boss.dead) return;
+  var bw = 260, bh = 16, bx = GW/2 - bw/2, by = 92;
+  textOutline('DRAGÃO', GW/2, by - 10, 16, '#ff8a5e', 'center');
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  rr(bx - 2, by - 2, bw + 4, bh + 4, 5); ctx.fill();
+  ctx.fillStyle = '#3a1020';
+  rr(bx, by, bw, bh, 4); ctx.fill();
+  var frac = Math.max(0, boss.hp / boss.maxHp);
+  var g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+  g.addColorStop(0, '#ff3a2a'); g.addColorStop(1, '#ff9a2a');
+  ctx.fillStyle = g;
+  rr(bx, by, bw * frac, bh, 4); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5;
+  rr(bx, by, bw, bh, 4); ctx.stroke();
+}
+
+function drawLevelClear() {
+  ctx.fillStyle = 'rgba(8,16,34,0.78)';
+  ctx.fillRect(0, 0, GW, GH);
+  var t = levelClearT;
+  var pop = Math.min(1, t / 18);
+  var cityDone = currentLevel === 1 ? 'RIO' : (currentLevel === 2 ? 'CHAPECÓ' : (currentLevel === 3 ? 'ESPANHA' : 'COVIL DO DRAGÃO'));
+  ctx.save();
+  ctx.translate(GW/2, 210);
+  ctx.scale(pop, pop);
+  textOutline('MUNDO 1-' + currentLevel, 0, -42, 30, '#f6c700', 'center');
+  textOutline('CONCLUÍDO!', 0, 6, 52, '#57cd63', 'center');
+  ctx.restore();
+  textOutline(cityDone, GW/2, 264, 24, '#dfe9f5', 'center');
+  // estrelinhas comemorando
+  for (var i = 0; i < 10; i++) {
+    var ang = frameCount * 0.03 + i * (Math.PI*2/10);
+    var rad = 120 + Math.sin(frameCount*0.06 + i) * 16;
+    drawStarIcon(GW/2 + Math.cos(ang)*rad, 220 + Math.sin(ang)*rad*0.5, 0.8);
+  }
+  textOutline('PONTOS: ' + pad(score, 7), GW/2, 330, 22, '#f6c700', 'center');
+  if (currentLevel < NUM_LEVELS) {
+    var next = currentLevel + 1;
+    var nextCity = next === 2 ? 'CHAPECÓ' : (next === 3 ? 'ESPANHA' : 'COVIL DO DRAGÃO');
+    if (t > 70) textOutline('Preparando MUNDO 1-' + next + '  ' + nextCity + '...', GW/2, 392, 20, '#fff', 'center');
+  } else {
+    if (t > 70) textOutline('Parabéns!', GW/2, 392, 22, '#fff', 'center');
+  }
+}
+
 function drawPlant(pl) {
+  if (pl.dead) return;
   var x = pl.x - camX;
   if (x < -60 || x > GW + 60) return;
   var out = pl.out || 0;
@@ -2262,7 +2603,7 @@ function drawHUD() {
   textOutline('' + Math.max(0, timeLeft), GW - 20, 64, 24, '#fff', 'right');
 
   drawBrazilFlag(40, GH - 28, 1);
-  var cityName = currentLevel === 1 ? 'RIO' : (currentLevel === 2 ? 'CHAPECÓ' : 'ESPANHA');
+  var cityName = currentLevel === 1 ? 'RIO' : (currentLevel === 2 ? 'CHAPECÓ' : (currentLevel === 3 ? 'ESPANHA' : 'COVIL DO DRAGÃO'));
   textOutline('MUNDO 1-' + currentLevel + '  ' + cityName, 66, GH - 28, 20, '#fff');
 
   // indicador de poder
@@ -2271,6 +2612,7 @@ function drawHUD() {
   var col = pw === 2 ? '#ff7a1a' : (pw === 1 ? '#57cd63' : '#cfd8e0');
   textOutline('PODER: ' + lbl, GW/2, GH - 28, 18, col, 'center');
 
+  drawBossHP();
   drawMusicBtn();
 }
 
@@ -2441,6 +2783,8 @@ function draw() {
     else if (en.type === 'koopa') drawKoopa(en);
     else drawUfo(en);
   });
+  drawBoss();
+  drawBossShots();
   drawFireballs();
   drawFrangorilla(player.x - camX, player.y, player.facing, player.walkT, player.onGround, player.inv, player.dead, player.sx, player.sy, player.w, player.h, player.power, player.grow);
   drawParticles();
@@ -2454,7 +2798,8 @@ function draw() {
   drawHUD();
   drawTouchControls();
 
-  if (state === 'win') drawEndScreen('FASE CONCLUÍDA!', 'O Frangorilla chegou ao castelo! Cocoricó!', '#57cd63');
+  if (state === 'levelclear') drawLevelClear();
+  if (state === 'win') drawEndScreen('VOCÊ VENCEU!', 'O Frangorilla derrotou o dragão e salvou o dia! Cocoricó!', '#57cd63');
   if (state === 'gameover') drawEndScreen('FIM DE JOGO', 'O Brasil precisa de você... tente de novo!', '#e84c3d');
 }
 
