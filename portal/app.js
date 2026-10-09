@@ -55,28 +55,43 @@
 
   function card(a) {
     const el = document.createElement("a");
-    el.className = "card";
+    el.className = "card" + (a.destaque ? " destaque" : "");
     el.href = `perfil.html?id=${encodeURIComponent(a.id)}`;
+
+    // Alguns selos (online / vídeo) são derivados do id só para a demo.
+    const online = _hash(a.id) % 3 !== 0;
+    const video = _hash(a.id) % 2 === 0;
 
     const badges = [];
     if (a.destaque) badges.push('<span class="badge badge-destaque">★ Destaque</span>');
-    if (a.verificado) badges.push('<span class="badge badge-verificado">✓ Verificado</span>');
+    if (a.verificado) badges.push('<span class="badge badge-verif">✓ Verificado</span>');
+    if (video) badges.push('<span class="badge badge-video">▶ Vídeo</span>');
+    if (online) badges.push('<span class="badge badge-online"><span class="dot"></span>Online</span>');
 
     el.innerHTML = `
-      <div class="card-img">
-        <div class="card-badges">${badges.join("")}</div>
-      </div>
-      <div class="card-body">
-        <div class="card-nome">${a.nome}, ${a.idade}
-          ${a.verificado ? '<span class="v">✓</span>' : ""}
+      <div class="card-photo">
+        <div class="card-bg"></div>
+        <div class="card-grad"></div>
+        <div class="card-top">
+          <div class="badges">${badges.join("")}</div>
+          <button class="fav" type="button" aria-label="Favoritar">♡</button>
         </div>
-        <div class="card-cidade">📍 ${a.cidade}/${a.estado}</div>
-        <div class="card-valor">${formatarValor(a.valor)}</div>
-        <span class="card-cat">${ROTULO_CATEGORIA[a.categoria]}</span>
+        <div class="card-info">
+          <div class="card-nome">${a.nome}, ${a.idade}${a.verificado ? ' <span class="v">✓</span>' : ""}</div>
+          <div class="card-cidade">📍 ${a.cidade}, ${a.estado}</div>
+          <div class="card-valor">${formatarValor(a.valor)}</div>
+        </div>
       </div>`;
-    // Retrato de modelo estilizado (ilustração gerada) como "foto".
-    el.querySelector(".card-img").style.backgroundImage = retrato(a);
-    el.querySelector(".card-img").style.backgroundSize = "cover";
+    // Retrato de modelo estilizado (ilustração gerada) preenchendo o card.
+    el.querySelector(".card-bg").style.backgroundImage = retrato(a);
+
+    const fav = el.querySelector(".fav");
+    fav.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fav.classList.toggle("on");
+      fav.textContent = fav.classList.contains("on") ? "♥" : "♡";
+    });
     return el;
   }
 
@@ -103,9 +118,22 @@
 
   busca.addEventListener("input", () => { estado.texto = busca.value.trim(); render(); });
   document.getElementById("btnBuscar").addEventListener("click", () => { estado.texto = busca.value.trim(); render(); });
-  fCidade.addEventListener("change", () => { estado.cidade = fCidade.value; render(); });
+  fCidade.addEventListener("change", () => {
+    estado.cidade = fCidade.value;
+    document.getElementById("cidadeAtual").textContent = fCidade.value
+      ? fCidade.value.replace("/", ", ")
+      : "Brasil";
+    render();
+  });
   fOrdem.addEventListener("change", () => { estado.ordem = fOrdem.value; render(); });
   fVerificado.addEventListener("change", () => { estado.verificado = fVerificado.checked; render(); });
+  document.getElementById("locPill").addEventListener("click", () => {
+    fCidade.focus();
+    fCidade.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+  document.getElementById("btnEntrarConta").addEventListener("click", () =>
+    alert("Entrar: nesta demonstração a área de conta ainda não está implementada.")
+  );
   document.getElementById("btnAnunciar").addEventListener("click", () =>
     alert("Cadastro de anúncio: nesta demonstração o formulário ainda não está implementado.")
   );
