@@ -138,8 +138,46 @@
     alert("Cadastro de anúncio: nesta demonstração o formulário ainda não está implementado.")
   );
 
+  /* Patrocinadores locais de Chapecó (exemplos fictícios de demonstração).
+     Em um portal real, seriam espaços pagos de estabelecimentos parceiros. */
+  const PATROCINADORES = [
+    { nome: "Motel Lua de Mel", cat: "Motel", ico: "🏩", cor: "#e11d74", desc: "Suítes temáticas com hidromassagem. Aberto 24h, entrada e saída discretas." },
+    { nome: "Motel Status", cat: "Motel", ico: "🏩", cor: "#b5179e", desc: "Luxo e privacidade na saída para o aeroporto. Pacotes pernoite e período." },
+    { nome: "Pub The Beer House", cat: "Bar & Pub", ico: "🍺", cor: "#f5b301", desc: "Chopp artesanal, sinuca e música ao vivo no centro de Chapecó." },
+    { nome: "Prive Night Club", cat: "Casa noturna", ico: "🎉", cor: "#7209b7", desc: "Shows, pista e ambientes reservados. A melhor noite da região oeste." },
+    { nome: "RedHot Sex Shop", cat: "Sex shop", ico: "🔥", cor: "#d62828", desc: "Produtos adultos e lingerie. Loja física e entrega discreta na região." },
+    { nome: "Tabacaria Havana", cat: "Tabacaria", ico: "🚬", cor: "#9d6b53", desc: "Charutos, narguilé e destilados premium. Lounge para fumantes." },
+    { nome: "Barbearia Don Vito", cat: "Barbearia", ico: "💈", cor: "#023e8a", desc: "Corte, barba e cerveja. Ambiente masculino, atendimento com hora marcada." },
+    { nome: "Status Motor Show", cat: "Automotivo", ico: "🏎️", cor: "#3a0ca3", desc: "Som, insulfilm e acessórios. Patrocinador de eventos e encontros masculinos." },
+  ];
+
+  function renderPatrocinadores() {
+    const c = document.getElementById("patrocGrid");
+    if (!c) return;
+    PATROCINADORES.forEach((p) => {
+      const el = document.createElement("div");
+      el.className = "sponsor";
+      el.innerHTML = `
+        <div class="sponsor-logo" style="background:linear-gradient(135deg, ${p.cor}, ${_shade(p.cor, -55)})">${p.ico}</div>
+        <div class="sponsor-body">
+          <div class="sponsor-cat">${p.cat}</div>
+          <div class="sponsor-nome">${p.nome}</div>
+          <div class="sponsor-desc">${p.desc}</div>
+        </div>`;
+      el.addEventListener("click", () =>
+        alert(`${p.nome} — espaço de patrocinador (demonstração). Em um portal real abriria o site/contato do parceiro.`)
+      );
+      c.appendChild(el);
+    });
+    const btn = document.getElementById("btnPatrocinar");
+    if (btn) btn.addEventListener("click", () =>
+      alert("Anúncio de estabelecimento: nesta demonstração o cadastro de patrocinadores ainda não está implementado.")
+    );
+  }
+
   /* ---- Início ---- */
   iniciarAgeGate();
   popularCidades();
+  renderPatrocinadores();
   render();
 })();
